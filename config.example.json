@@ -1,0 +1,16 @@
+{
+  "hotkey": "ctrl_r",
+  "trigger_mode": "long_press_toggle",
+  "long_press_seconds": 1.0,
+  "model_size": "small",
+  "device": "cpu",
+  "compute_type": "int8",
+  "language": "auto",
+  "auto_format": true,
+  "initial_prompt": "Hello! Voice typing in English, বাংলা, or हिन्दी.",
+  "paste_mode": "clipboard",
+  "restore_clipboard": true,
+  "sound_feedback": true,
+  "show_overlay": true,
+  "sample_rate": 16000
+}

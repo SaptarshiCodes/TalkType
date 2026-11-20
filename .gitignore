@@ -1,0 +1,73 @@
+# ==========================================
+# TalkType - Git Ignore Configuration
+# ==========================================
+
+# 1. AI / Whisper Speech Model Weights (CRITICAL: Exceeds GitHub 100MB file limit)
+models/
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.onnx
+
+# 2. Virtual Environments, Local Config & Dependencies
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+config.json
+
+# 3. Python Bytecode & Compilation Caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 4. Logs & Diagnostic Outputs
+*.log
+logs/
+*.tmp
+
+# 5. Audio Recordings & Media Samples
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
+recordings/
+temp/
+
+# 6. Operating System & Editor Metadata
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+
+# User Configuration
+config.json
+.agents/
+skills-lock.json
