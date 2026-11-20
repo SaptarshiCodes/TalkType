@@ -11,6 +11,7 @@
   "paste_mode": "clipboard",
   "restore_clipboard": true,
   "sound_feedback": true,
+  "theme": "light",
   "show_overlay": true,
   "sample_rate": 16000
 }

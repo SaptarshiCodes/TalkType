@@ -10,10 +10,9 @@ Designed strictly following Cursor's Design System (.agents/skills/design/cursor
 """
 
 import sys
-import os
-import json
 import time
 import math
+import re
 import numpy as np
 import sounddevice as sd
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QRectF, QPropertyAnimation, QEasingCurve, pyqtProperty
@@ -25,8 +24,34 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QFont, QColor, QPainter, QBrush, QLinearGradient, QPen, QPainterPath
 
 from talktype.models.catalog import MODEL_CATALOG, is_model_installed, download_model_in_background
-from talktype.config import CONFIG_PATH
 from talktype.ui.motion import AnimatedStackedWidget, SpringDamper
+
+
+THEME_COLOR_MAP = {
+    "#f7f7f4": "#191917",
+    "#fafaf7": "#252521",
+    "#efeee8": "#30302b",
+    "#e6e5e0": "#3d3c36",
+    "#cfcdc4": "#55534a",
+    "#a09c92": "#76736a",
+    "#807d72": "#aaa69b",
+    "#5a5852": "#d1cec4",
+    "#26251e": "#f1efe8",
+    "#eff7f0": "#213326",
+    "#1f6d2b": "#a6d9aa",
+    "#bfe4c4": "#436346",
+    "#1f8a65": "#72c6a4",
+    "#c08532": "#e5b668",
+    "#f0e8f7": "#30273b",
+    "#643ba0": "#c7a6ee",
+    "#c0a8dd": "#66517a",
+    "#fbf0eb": "#392a23",
+    "#8c4524": "#f0ad8e",
+    "#dfa88f": "#765344",
+    "#edf3fa": "#252f3c",
+    "#22538b": "#a9c5ed",
+    "#9fbbe0": "#536b88",
+}
 
 
 class CursorVUMeter(QWidget):
@@ -41,6 +66,11 @@ class CursorVUMeter(QWidget):
         self.level = 0.0
         self.peak = 0.0
         self.peak_decay = 0.0
+        self.is_dark = False
+
+    def set_dark_mode(self, enabled: bool):
+        self.is_dark = enabled
+        self.update()
 
     def set_level(self, lvl: float):
         self.level = max(0.0, min(1.0, lvl))
@@ -61,8 +91,10 @@ class CursorVUMeter(QWidget):
         r = h / 2.0
 
         # Background track: soft warm hairline cream
-        painter.setPen(QPen(QColor("#e6e5e0"), 1.0))
-        painter.setBrush(QBrush(QColor("#efeee8")))
+        track_border = "#3d3c36" if self.is_dark else "#e6e5e0"
+        track_color = "#30302b" if self.is_dark else "#efeee8"
+        painter.setPen(QPen(QColor(track_border), 1.0))
+        painter.setBrush(QBrush(QColor(track_color)))
         painter.drawRoundedRect(QRectF(0.5, 0.5, w - 1.0, h - 1.0), r, r)
 
         # Active fill: subtle mint to warm amber to Cursor Orange at peak
@@ -80,7 +112,8 @@ class CursorVUMeter(QWidget):
         # Hairline peak needle
         if self.peak > 0.03:
             peak_x = min(w - 2.5, max(r, w * self.peak))
-            painter.setPen(QPen(QColor("#26251e"), 1.6))
+            peak_color = "#f1efe8" if self.is_dark else "#26251e"
+            painter.setPen(QPen(QColor(peak_color), 1.6))
             painter.drawLine(int(peak_x), 1, int(peak_x), h - 1)
 
 
@@ -94,6 +127,7 @@ class CursorToggleSwitch(QAbstractButton):
         self.setCheckable(True)
         self.setChecked(checked)
         self.setFixedSize(38, 22)
+        self.is_dark = False
         self._thumb_pos = 19.0 if checked else 3.0
         self._anim = QPropertyAnimation(self, b"thumb_pos", self)
         self._anim.setDuration(140)
@@ -115,6 +149,10 @@ class CursorToggleSwitch(QAbstractButton):
         self._anim.setEndValue(19.0 if checked else 3.0)
         self._anim.start()
 
+    def set_dark_mode(self, enabled: bool):
+        self.is_dark = enabled
+        self.update()
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -126,10 +164,10 @@ class CursorToggleSwitch(QAbstractButton):
         # Background track
         if self.isChecked():
             track_color = QColor("#f54e00")  # Cursor Orange
-            border_color = QColor("#d04200")
+            border_color = QColor("#ff6a2b" if self.is_dark else "#d04200")
         else:
-            track_color = QColor("#e6e5e0")  # Surface Strong
-            border_color = QColor("#cfcdc4")
+            track_color = QColor("#3d3c36" if self.is_dark else "#e6e5e0")
+            border_color = QColor("#55534a" if self.is_dark else "#cfcdc4")
 
         painter.setPen(QPen(border_color, 1.0))
         painter.setBrush(QBrush(track_color))
@@ -154,18 +192,25 @@ class ModernDashboard(QWidget):
     - AI-timeline pastel pill palette for model language dialects.
     """
     config_updated = pyqtSignal(dict)
-    model_switched = pyqtSignal(str)
+    model_switch_requested = pyqtSignal(str)
 
     def __init__(self, config: dict, audio_recorder=None, transcriber=None, formatter=None):
         super().__init__()
-        self.config = config
+        self.config = dict(config)
         self.audio_recorder = audio_recorder
         self.transcriber = transcriber
         self.formatter = formatter
         self.is_test_recording = False
+        self.is_dark = self.config.get("theme", "light") == "dark"
+        self._active_model_size = getattr(
+            transcriber, "model_size", self.config.get("model_size", "small")
+        )
+        self._pending_model_size = None
+        self._model_status_kind = None
 
         self._init_window()
         self._init_ui()
+        self._apply_theme()
         self._init_mic_meter()
 
     def _init_window(self):
@@ -245,6 +290,15 @@ class ModernDashboard(QWidget):
                 background-color: #d04200;
                 border-color: #b03800;
             }
+            QPushButton#themeToggle:checked {
+                background-color: #f54e00;
+                border-color: #d04200;
+                color: #ffffff;
+            }
+            QPushButton#themeToggle:checked:hover {
+                background-color: #d04200;
+                border-color: #b03800;
+            }
             QPushButton#tabBtn {
                 background-color: transparent;
                 border: none;
@@ -292,6 +346,7 @@ class ModernDashboard(QWidget):
                 padding: 12px;
                 font-size: 13px;
                 color: #26251e;
+                placeholder-text-color: #807d72;
                 line-height: 1.5;
             }
             QTextEdit:focus {
@@ -356,8 +411,16 @@ class ModernDashboard(QWidget):
 
         header.addStretch()
 
+        self.theme_button = QPushButton("Dark mode", self)
+        self.theme_button.setObjectName("themeToggle")
+        self.theme_button.setCheckable(True)
+        self.theme_button.setChecked(self.is_dark)
+        self.theme_button.setFixedHeight(32)
+        self.theme_button.toggled.connect(self._on_theme_toggled)
+        header.addWidget(self.theme_button)
+
         # Active Model Pill Badge: Mint pastel (Cursor Grep token)
-        current_m = self.config.get("model_size", "small").upper()
+        current_m = self._active_model_size.upper()
         self.status_pill = QLabel(f"● {current_m} (CPU int8)", self)
         self.status_pill.setFont(QFont("JetBrains Mono", 9, QFont.Weight.Medium))
         self.status_pill.setStyleSheet("""
@@ -419,6 +482,46 @@ class ModernDashboard(QWidget):
         self.btn_tab_audio.setChecked(idx == 0)
         self.btn_tab_models.setChecked(idx == 1)
         self.btn_tab_test.setChecked(idx == 2)
+
+    def _apply_theme(self):
+        replacements = THEME_COLOR_MAP if self.is_dark else {
+            dark: light for light, dark in THEME_COLOR_MAP.items()
+        }
+        background_color = "#242420" if self.is_dark else "#ffffff"
+        previous_background_color = "#ffffff" if self.is_dark else "#242420"
+        background_pattern = re.compile(
+            rf"(?i)(background(?:-color)?\s*:\s*){re.escape(previous_background_color)}\b"
+        )
+
+        for widget in [self, *self.findChildren(QWidget)]:
+            stylesheet = widget.styleSheet()
+            if stylesheet:
+                stylesheet = background_pattern.sub(
+                    rf"\g<1>{background_color}", stylesheet
+                )
+                stylesheet = re.sub(
+                    r"#[0-9a-fA-F]{6}",
+                    lambda match: replacements.get(match.group(0).lower(), match.group(0)),
+                    stylesheet,
+                )
+                widget.setStyleSheet(stylesheet)
+
+            if isinstance(widget, (CursorVUMeter, CursorToggleSwitch)):
+                widget.set_dark_mode(self.is_dark)
+
+        if hasattr(self, "model_state_label") and self.model_state_label.isVisible():
+            self._style_model_state_label()
+
+        self.theme_button.setText("Light mode" if self.is_dark else "Dark mode")
+        self.theme_button.setAccessibleName(
+            "Switch to light mode" if self.is_dark else "Switch to dark mode"
+        )
+
+    def _on_theme_toggled(self, checked: bool):
+        self.is_dark = checked
+        self._apply_theme()
+        self.config["theme"] = "dark" if checked else "light"
+        self._save()
 
     # ---------------- PAGE 1: Audio & Trigger ----------------
     def _build_audio_page(self) -> QWidget:
@@ -616,6 +719,11 @@ class ModernDashboard(QWidget):
         sel_row.addWidget(self.model_combo, 1)
         tc_layout.addLayout(sel_row)
 
+        self.model_state_label = QLabel(self)
+        self.model_state_label.setWordWrap(True)
+        self.model_state_label.hide()
+        tc_layout.addWidget(self.model_state_label)
+
         layout.addWidget(top_card)
 
         # Interactive Model Hub Catalog Cards
@@ -624,8 +732,8 @@ class ModernDashboard(QWidget):
         self.model_card_widgets = {}
         for key, info in MODEL_CATALOG.items():
             card = self._build_single_model_card(key, info)
-            self.model_card_widgets[key] = card
             layout.addWidget(card)
+        self._refresh_model_page_cards()
 
         scroll.setWidget(w)
         return scroll
@@ -671,18 +779,19 @@ class ModernDashboard(QWidget):
         header_row.addWidget(badge_lbl)
         header_row.addStretch()
 
-        # Switch button or Active tag
-        is_active = (self.config.get("model_size") == key)
-        if is_active:
-            status_tag = QLabel("● Active", self)
-            status_tag.setFont(QFont("JetBrains Mono", 10, QFont.Weight.Bold))
-            status_tag.setStyleSheet("color: #1f8a65; background: transparent;")
-            header_row.addWidget(status_tag)
-        else:
-            switch_btn = QPushButton("Use Model")
-            switch_btn.setFixedSize(96, 28)
-            switch_btn.clicked.connect(lambda _, k=key: self._switch_to_model(k))
-            header_row.addWidget(switch_btn)
+        status_tag = QLabel("● Active", self)
+        status_tag.setFont(QFont("JetBrains Mono", 10, QFont.Weight.Bold))
+        status_tag.setStyleSheet("color: #1f8a65; background: transparent;")
+        header_row.addWidget(status_tag)
+
+        switch_btn = QPushButton("Use Model")
+        switch_btn.setFixedSize(96, 28)
+        switch_btn.clicked.connect(lambda _, k=key: self._request_model_switch(k))
+        header_row.addWidget(switch_btn)
+        self.model_card_widgets[key] = {
+            "status": status_tag,
+            "button": switch_btn,
+        }
 
         card_layout.addLayout(header_row)
 
@@ -778,7 +887,7 @@ class ModernDashboard(QWidget):
             display_text = f"{info['name']} — {status_tag}"
             self.model_combo.addItem(display_text, key)
 
-        current_m = self.config.get("model_size", "small")
+        current_m = self._active_model_size
         idx = self.model_combo.findData(current_m)
         if idx >= 0:
             self.model_combo.setCurrentIndex(idx)
@@ -819,41 +928,72 @@ class ModernDashboard(QWidget):
         if dev_id is not None and self.audio_recorder:
             self.audio_recorder.set_device(dev_id)
 
-    def _switch_to_model(self, key: str):
-        idx = self.model_combo.findData(key)
-        if idx >= 0:
-            self.model_combo.setCurrentIndex(idx)
+    def _request_model_switch(self, key: str):
+        if not key or self._pending_model_size:
+            return
+        if key == self._active_model_size:
+            self.set_model_switch_state(self._active_model_size)
+            return
+        self.model_switch_requested.emit(key)
 
     def _on_model_selection_changed(self):
-        key = self.model_combo.currentData()
-        if not key:
-            return
-
-        self.config["model_size"] = key
-        self._save()
-
-        if self.transcriber:
-            success = self.transcriber.change_model(key)
-            if success:
-                self.model_switched.emit(key)
-                self.status_pill.setText(f"● {key.upper()} (CPU int8)")
-                self._refresh_model_page_cards()
+        self._request_model_switch(self.model_combo.currentData())
 
     def _refresh_model_page_cards(self):
-        active_key = self.config.get("model_size")
-        for key, card in self.model_card_widgets.items():
-            is_active = (key == active_key)
-            card_layout = card.layout()
-            if card_layout and card_layout.count() > 0:
-                header_row = card_layout.itemAt(0).layout()
-                if header_row and header_row.count() >= 3:
-                    item = header_row.itemAt(header_row.count() - 1)
-                    if item.widget():
-                        w = item.widget()
-                        if is_active and isinstance(w, QPushButton):
-                            w.hide()
-                        elif not is_active and isinstance(w, QLabel) and "Active" in w.text():
-                            w.setText("Inactive")
+        for key, controls in self.model_card_widgets.items():
+            is_active = key == self._active_model_size
+            is_pending = key == self._pending_model_size
+            status = controls["status"]
+            button = controls["button"]
+
+            status.setVisible(is_active)
+            button.setVisible(not is_active)
+            button.setText("Loading..." if is_pending else "Use Model")
+            button.setEnabled(self._pending_model_size is None)
+
+    def set_model_switch_state(
+        self, active_model: str, pending_model: str = None, error: str = None
+    ):
+        self._active_model_size = active_model
+        self._pending_model_size = pending_model
+        self.config["model_size"] = active_model
+
+        was_blocked = self.model_combo.blockSignals(True)
+        active_index = self.model_combo.findData(active_model)
+        if active_index >= 0:
+            self.model_combo.setCurrentIndex(active_index)
+        self.model_combo.blockSignals(was_blocked)
+        self.model_combo.setEnabled(pending_model is None)
+
+        self.status_pill.setText(f"● {active_model.upper()} (CPU int8)")
+        if pending_model:
+            pending_name = MODEL_CATALOG.get(pending_model, {}).get("name", pending_model)
+            self._set_model_state_message(
+                f"Loading {pending_name}. Your current model remains active.",
+                "loading",
+            )
+        elif error:
+            self._set_model_state_message(error, "error")
+        else:
+            self._set_model_state_message("", None)
+
+        self._refresh_model_page_cards()
+
+    def _set_model_state_message(self, message: str, kind: str):
+        self._model_status_kind = kind
+        self.model_state_label.setText(message)
+        self.model_state_label.setVisible(bool(message))
+        if message:
+            self._style_model_state_label()
+
+    def _style_model_state_label(self):
+        if self._model_status_kind == "error":
+            color = "#fca5a5" if self.is_dark else "#b42318"
+        else:
+            color = "#fd965c" if self.is_dark else "#b9470a"
+        self.model_state_label.setStyleSheet(
+            f"color: {color}; font-size: 12px; background: transparent;"
+        )
 
     def _on_lang_changed(self):
         l = self.lang_combo.currentData()
@@ -875,12 +1015,7 @@ class ModernDashboard(QWidget):
         self._save()
 
     def _save(self):
-        try:
-            with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-                json.dump(self.config, f, indent=2, ensure_ascii=False)
-            self.config_updated.emit(self.config)
-        except Exception as e:
-            print("Failed to save config:", e)
+        self.config_updated.emit(dict(self.config))
 
     def _on_test_record_clicked(self):
         self.test_btn.setEnabled(False)

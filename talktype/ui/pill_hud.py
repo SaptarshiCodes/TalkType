@@ -11,8 +11,8 @@ Features:
 import sys
 import ctypes
 import math
-from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, pyqtSignal, QObject, QRectF, QRect
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QGraphicsDropShadowEffect
+from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, pyqtSignal, pyqtSlot, QObject, QRectF, QRect
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel
 from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QLinearGradient, QFont, QFontMetrics, QPainterPath
 
 from talktype.ui.motion import SpringDamper
@@ -43,6 +43,11 @@ class UnifiedIndicatorWidget(QWidget):
         self.current_heights = [4.0] * 5
         self.bar_springs = [SpringDamper(initial_value=4.0, stiffness=320.0, damping=24.0) for _ in range(5)]
         self.phase = 0.0
+        self.is_dark = True
+
+    def set_theme(self, is_dark: bool):
+        self.is_dark = is_dark
+        self.update()
 
     def set_state(self, state: str):
         self.state = state
@@ -87,7 +92,8 @@ class UnifiedIndicatorWidget(QWidget):
         if self.state == "hold":
             # 1. Circular countdown progress ring
             # Background track
-            pen_track = QPen(QColor(255, 255, 255, 28), 2.5)
+            track_color = QColor(255, 255, 255, 28) if self.is_dark else QColor(38, 37, 30, 36)
+            pen_track = QPen(track_color, 2.5)
             painter.setPen(pen_track)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawArc(3, 3, 26, 26, 0, 360 * 16)
@@ -132,7 +138,8 @@ class UnifiedIndicatorWidget(QWidget):
         elif self.state == "transcribing":
             # 3. Dual-arc cosmic aurora spinner
             # Outer subtle track
-            painter.setPen(QPen(QColor(255, 255, 255, 20), 1.8))
+            track_color = QColor(255, 255, 255, 20) if self.is_dark else QColor(38, 37, 30, 28)
+            painter.setPen(QPen(track_color, 1.8))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawArc(4, 4, 24, 24, 0, 360 * 16)
 
@@ -232,17 +239,22 @@ class StatusBadgeWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.text = ""
-        self.fg_color = QColor("#a1a1aa")
-        self.bg_color = QColor(255, 255, 255, 14)
-        self.border_color = QColor(255, 255, 255, 24)
+        self.is_dark = True
+        self._source_fg = QColor("#a1a1aa")
+        self._source_bg = QColor(255, 255, 255, 14)
+        self._source_border = QColor(255, 255, 255, 24)
+        self.fg_color = QColor(self._source_fg)
+        self.bg_color = QColor(self._source_bg)
+        self.border_color = QColor(self._source_border)
         self.setFont(QFont("Segoe UI Semibold", 9))
         self.setFixedHeight(24)
 
     def set_badge(self, text: str, fg="#a1a1aa", bg="rgba(255, 255, 255, 14)", border="rgba(255, 255, 255, 24)"):
         self.text = text
-        self.fg_color = QColor(fg)
-        self.bg_color = QColor(bg) if isinstance(bg, str) and not bg.startswith("rgba") else (QColor(bg) if isinstance(bg, QColor) else QColor(255, 255, 255, 14))
-        self.border_color = QColor(border) if isinstance(border, str) and not border.startswith("rgba") else (QColor(border) if isinstance(border, QColor) else QColor(255, 255, 255, 24))
+        self._source_fg = self._coerce_color(fg, QColor("#a1a1aa"))
+        self._source_bg = self._coerce_color(bg, QColor(255, 255, 255, 14))
+        self._source_border = self._coerce_color(border, QColor(255, 255, 255, 24))
+        self._apply_theme()
         
         # Calculate dynamic width to guarantee no text clipping
         fm = QFontMetrics(self.font())
@@ -254,6 +266,37 @@ class StatusBadgeWidget(QWidget):
             self.setFixedWidth(0)
             self.hide()
         self.update()
+
+    @staticmethod
+    def _coerce_color(color, fallback: QColor) -> QColor:
+        if isinstance(color, QColor):
+            return QColor(color)
+        if isinstance(color, str) and color.startswith("rgba"):
+            return QColor(fallback)
+        return QColor(color)
+
+    def set_theme(self, is_dark: bool):
+        self.is_dark = is_dark
+        self._apply_theme()
+
+    def _apply_theme(self):
+        if self.is_dark:
+            self.fg_color = QColor(self._source_fg)
+            self.bg_color = QColor(self._source_bg)
+            self.border_color = QColor(self._source_border)
+        else:
+            self.fg_color = QColor(self._source_fg).darker(240)
+            self.bg_color = self._tint_color(self._source_fg, 0.10)
+            self.border_color = self._tint_color(self._source_fg, 0.30)
+        self.update()
+
+    @staticmethod
+    def _tint_color(color: QColor, strength: float) -> QColor:
+        return QColor(
+            round(255 + (color.red() - 255) * strength),
+            round(255 + (color.green() - 255) * strength),
+            round(255 + (color.blue() - 255) * strength),
+        )
 
     def paintEvent(self, event):
         if not self.text:
@@ -279,14 +322,24 @@ class FloatingPillHUD(QWidget):
     Features obsidian glassmorphism, fluid audio responsiveness,
     smart auto-sizing capsule, and focus-safe Windows integration.
     """
-    def __init__(self, audio_recorder=None, hotkey_name: str = "tab"):
+    def __init__(self, audio_recorder=None, hotkey_name: str = "tab", theme: str = "light"):
         super().__init__()
         self.audio_recorder = audio_recorder
         self._hotkey_name = hotkey_name
+        self.is_dark = theme == "dark"
         self.state = "idle"
+        self._label_theme_styles = (
+            "color: #f4f4f5; background: transparent;",
+            "color: #26251e; background: transparent;"
+        )
         self.fade_animation = None
+        self._state_generation = 0
+        self._hide_timer = QTimer(self)
+        self._hide_timer.setSingleShot(True)
+        self._hide_timer.timeout.connect(self.smooth_hide)
         self._init_window()
         self._init_ui()
+        self._apply_theme()
         self._init_timer()
 
     @property
@@ -303,6 +356,23 @@ class FloatingPillHUD(QWidget):
 
     def set_hotkey_name(self, name: str):
         self._hotkey_name = name
+
+    def set_theme(self, theme: str):
+        is_dark = theme == "dark"
+        if self.is_dark == is_dark:
+            return
+        self.is_dark = is_dark
+        self._apply_theme()
+
+    def _apply_theme(self):
+        self.indicator.set_theme(self.is_dark)
+        self.badge.set_theme(self.is_dark)
+        self.label.setStyleSheet(self._label_theme_styles[0 if self.is_dark else 1])
+        self.update()
+
+    def _set_label_theme_styles(self, dark_style: str, light_style: str):
+        self._label_theme_styles = (dark_style, light_style)
+        self.label.setStyleSheet(self._label_theme_styles[0 if self.is_dark else 1])
 
     def _init_window(self):
         self.setWindowFlags(
@@ -330,9 +400,14 @@ class FloatingPillHUD(QWidget):
             pass
 
     def _center_near_bottom(self):
-        screen = self.screen().geometry()
-        x = (screen.width() - self.width()) // 2
-        y = screen.height() - 110
+        from PyQt6.QtWidgets import QApplication
+        screen_obj = self.screen() or QApplication.primaryScreen()
+        if screen_obj is None:
+            return
+        # Use availableGeometry (excludes taskbar) in logical pixels — never physicalSize.
+        avail = screen_obj.availableGeometry()
+        x = avail.x() + (avail.width() - self.width()) // 2
+        y = avail.y() + avail.height() - 90
         self.move(x, y)
 
     def _init_ui(self):
@@ -358,13 +433,6 @@ class FloatingPillHUD(QWidget):
         self.badge = StatusBadgeWidget(self)
         self.main_layout.addWidget(self.badge)
 
-        # Diffused ambient drop shadow
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(32)
-        shadow.setColor(QColor(0, 0, 0, 200))
-        shadow.setOffset(0, 8)
-        self.setGraphicsEffect(shadow)
-
     def _init_timer(self):
         # 40 FPS high-precision animation loop
         self.anim_timer = QTimer(self)
@@ -383,6 +451,14 @@ class FloatingPillHUD(QWidget):
 
     def _adapt_capsule_size(self):
         """Dynamically and smoothly animates capsule width with OutCubic motion so text is never clipped."""
+        from PyQt6.QtWidgets import QApplication
+        # Always use primaryScreen so this works even before the widget is shown (self.screen() returns None when hidden)
+        screen_obj = self.screen() or QApplication.primaryScreen()
+        if screen_obj is None:
+            return
+        # availableGeometry excludes the taskbar — gives correct logical pixel bounds
+        avail = screen_obj.availableGeometry()
+
         fm = QFontMetrics(self.label.font())
         label_w = fm.horizontalAdvance(self.label.text())
         badge_w = self.badge.width() if self.badge.isVisible() else 0
@@ -390,20 +466,20 @@ class FloatingPillHUD(QWidget):
         target_w = 32 + 32 + 12 + label_w + 12 + badge_w + 24
         target_w = max(360, min(560, target_w))
 
-        screen = self.screen().geometry()
-        target_x = (screen.width() - target_w) // 2
-        target_y = screen.height() - 110
+        target_x = avail.x() + (avail.width() - target_w) // 2
+        target_y = avail.y() + avail.height() - 90
         target_rect = QRect(target_x, target_y, target_w, self.height())
 
         if self.isVisible():
-            if not hasattr(self, "_geo_anim") or self._geo_anim is None:
-                self._geo_anim = QPropertyAnimation(self, b"geometry", self)
-                self._geo_anim.setDuration(160)
-                self._geo_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-            self._geo_anim.stop()
-            self._geo_anim.setStartValue(self.geometry())
-            self._geo_anim.setEndValue(target_rect)
-            self._geo_anim.start()
+            if self.geometry() != target_rect:
+                if not hasattr(self, "_geo_anim") or self._geo_anim is None:
+                    self._geo_anim = QPropertyAnimation(self, b"geometry", self)
+                    self._geo_anim.setDuration(160)
+                    self._geo_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+                self._geo_anim.stop()
+                self._geo_anim.setStartValue(self.geometry())
+                self._geo_anim.setEndValue(target_rect)
+                self._geo_anim.start()
         else:
             self.setGeometry(target_rect)
 
@@ -412,13 +488,25 @@ class FloatingPillHUD(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
+        # Crisp hairline ambient border strictly inside window bounds (0% negative coordinates)
+        outer_rect = self.rect().adjusted(1, 1, -1, -1)
+        outer_radius = outer_rect.height() / 2.0
+        ambient_color = QColor(0, 0, 0, 45) if self.is_dark else QColor(0, 0, 0, 20)
+        painter.setPen(QPen(ambient_color, 1.0))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(QRectF(outer_rect), outer_radius, outer_radius)
+
         rect = self.rect().adjusted(2, 2, -2, -2)
         radius = rect.height() / 2.0
 
-        # Base obsidian glass gradient
+        # Match the dashboard surface while keeping state colors distinct.
         bg_gradient = QLinearGradient(0, 0, 0, self.height())
-        bg_gradient.setColorAt(0.0, QColor(18, 20, 27, 248))
-        bg_gradient.setColorAt(1.0, QColor(10, 11, 15, 252))
+        if self.is_dark:
+            bg_gradient.setColorAt(0.0, QColor(18, 20, 27, 248))
+            bg_gradient.setColorAt(1.0, QColor(10, 11, 15, 252))
+        else:
+            bg_gradient.setColorAt(0.0, QColor("#ffffff"))
+            bg_gradient.setColorAt(1.0, QColor("#f1f0eb"))
         painter.setBrush(QBrush(bg_gradient))
 
         # Dynamic specular edge lighting
@@ -444,8 +532,12 @@ class FloatingPillHUD(QWidget):
             border_gradient.setColorAt(1.0, QColor(168, 85, 247, 60))
             border_pen = QPen(QBrush(border_gradient), 1.2)
         else:
-            border_gradient.setColorAt(0.0, QColor(255, 255, 255, 45))
-            border_gradient.setColorAt(1.0, QColor(255, 255, 255, 12))
+            if self.is_dark:
+                border_gradient.setColorAt(0.0, QColor(255, 255, 255, 45))
+                border_gradient.setColorAt(1.0, QColor(255, 255, 255, 12))
+            else:
+                border_gradient.setColorAt(0.0, QColor(38, 37, 30, 70))
+                border_gradient.setColorAt(1.0, QColor(38, 37, 30, 28))
             border_pen = QPen(QBrush(border_gradient), 1.0)
 
         painter.setPen(border_pen)
@@ -453,20 +545,46 @@ class FloatingPillHUD(QWidget):
 
         # Subtle specular top highlight curve
         inner_top = QRectF(rect.x() + 10, rect.y() + 1, rect.width() - 20, 1.0)
-        painter.setPen(QColor(255, 255, 255, 25))
+        painter.setPen(QColor(255, 255, 255, 25 if self.is_dark else 180))
         painter.drawLine(int(inner_top.left()), int(inner_top.top()), int(inner_top.right()), int(inner_top.top()))
 
     # ---- State Controllers ----
 
+    def _set_state(self, state: str):
+        self._state_generation += 1
+        self.state = state
+        self._hide_timer.stop()
+        self._stop_fade_animation()
+
+    def _stop_fade_animation(self):
+        if self.fade_animation is not None:
+            animation = self.fade_animation
+            self.fade_animation = None
+            animation.stop()
+            animation.deleteLater()
+
+    def _reset_idle_display(self):
+        self.indicator.set_state("idle")
+        self.label.setText("TalkType Ready")
+        self._set_label_theme_styles(
+            "color: #f4f4f5; background: transparent;",
+            "color: #26251e; background: transparent;"
+        )
+        self.badge.set_badge("")
+        self._adapt_capsule_size()
+
+    @pyqtSlot(str, float, float)
     def show_hold_progress(self, action: str, elapsed: float, target: float):
-        self.state = "hold"
-        self._ensure_visible()
+        self._set_state("hold")
         self.indicator.set_state("hold")
         pct = min(1.0, elapsed / max(target, 0.1))
         self.indicator.set_progress(pct)
 
         self.label.setText(f"Hold {self.hotkey_display} to {action}")
-        self.label.setStyleSheet("color: #fef08a; font-weight: 600; font-size: 13px;")
+        self._set_label_theme_styles(
+            "color: #fef08a; font-weight: 600; font-size: 13px;",
+            "color: #765800; font-weight: 600; font-size: 13px;"
+        )
 
         # Keycap style badge
         self.badge.set_badge(
@@ -476,15 +594,19 @@ class FloatingPillHUD(QWidget):
             border=QColor(254, 240, 138, 50)
         )
         self._adapt_capsule_size()
+        self._ensure_visible()
         self.update()
 
+    @pyqtSlot()
     def show_recording(self):
-        self.state = "recording"
-        self._ensure_visible()
+        self._set_state("recording")
         self.indicator.set_state("recording")
 
         self.label.setText("Listening...")
-        self.label.setStyleSheet("color: #ffffff; font-weight: 600; font-size: 13px;")
+        self._set_label_theme_styles(
+            "color: #ffffff; font-weight: 600; font-size: 13px;",
+            "color: #b42318; font-weight: 600; font-size: 13px;"
+        )
 
         # Keyboard prompt badge
         self.badge.set_badge(
@@ -494,15 +616,19 @@ class FloatingPillHUD(QWidget):
             border=QColor(239, 68, 68, 50)
         )
         self._adapt_capsule_size()
+        self._ensure_visible()
         self.update()
 
+    @pyqtSlot(str)
     def show_transcribing(self, model_name: str = "Whisper"):
-        self.state = "transcribing"
-        self._ensure_visible()
+        self._set_state("transcribing")
         self.indicator.set_state("transcribing")
 
         self.label.setText("Transcribing speech...")
-        self.label.setStyleSheet("color: #bae6fd; font-weight: 600; font-size: 13px;")
+        self._set_label_theme_styles(
+            "color: #bae6fd; font-weight: 600; font-size: 13px;",
+            "color: #146a91; font-weight: 600; font-size: 13px;"
+        )
 
         self.badge.set_badge(
             f"⚡ {model_name}",
@@ -511,15 +637,19 @@ class FloatingPillHUD(QWidget):
             border=QColor(56, 189, 248, 50)
         )
         self._adapt_capsule_size()
+        self._ensure_visible()
         self.update()
 
+    @pyqtSlot()
     def show_formatting(self):
-        self.state = "formatting"
-        self._ensure_visible()
+        self._set_state("formatting")
         self.indicator.set_state("formatting")
 
         self.label.setText("Formatting & Polishing...")
-        self.label.setStyleSheet("color: #fde047; font-weight: 600; font-size: 13px;")
+        self._set_label_theme_styles(
+            "color: #fde047; font-weight: 600; font-size: 13px;",
+            "color: #805a00; font-weight: 600; font-size: 13px;"
+        )
 
         self.badge.set_badge(
             "✦ Auto-Format",
@@ -528,15 +658,19 @@ class FloatingPillHUD(QWidget):
             border=QColor(250, 204, 21, 50)
         )
         self._adapt_capsule_size()
+        self._ensure_visible()
         self.update()
 
+    @pyqtSlot()
     def show_done(self):
-        self.state = "done"
-        self._ensure_visible()
+        self._set_state("done")
         self.indicator.set_state("done")
 
         self.label.setText("Formatted & Pasted")
-        self.label.setStyleSheet("color: #86efac; font-weight: 600; font-size: 13px;")
+        self._set_label_theme_styles(
+            "color: #86efac; font-weight: 600; font-size: 13px;",
+            "color: #157347; font-weight: 600; font-size: 13px;"
+        )
 
         self.badge.set_badge(
             "Done ✓",
@@ -545,16 +679,20 @@ class FloatingPillHUD(QWidget):
             border=QColor(74, 222, 128, 60)
         )
         self._adapt_capsule_size()
-        self.update()
-        QTimer.singleShot(850, self.smooth_hide)
-
-    def show_no_speech(self):
-        self.state = "no_speech"
         self._ensure_visible()
+        self.update()
+        self._hide_timer.start(850)
+
+    @pyqtSlot()
+    def show_no_speech(self):
+        self._set_state("no_speech")
         self.indicator.set_state("no_speech")
 
-        self.label.setText("No Speech Detected")
-        self.label.setStyleSheet("color: #a1a1aa; font-weight: 500; font-size: 13px;")
+        self.label.setText("Voice not detected")
+        self._set_label_theme_styles(
+            "color: #a1a1aa; font-weight: 500; font-size: 13px;",
+            "color: #62626d; font-weight: 500; font-size: 13px;"
+        )
 
         self.badge.set_badge(
             "Try Again",
@@ -563,16 +701,23 @@ class FloatingPillHUD(QWidget):
             border=QColor(255, 255, 255, 25)
         )
         self._adapt_capsule_size()
-        self.update()
-        QTimer.singleShot(1100, self.smooth_hide)
-
-    def show_model_switched(self, model_name: str):
-        self.state = "info"
         self._ensure_visible()
+        self.update()
+        self._hide_timer.start(1100)
+
+    @pyqtSlot(str)
+    def show_model_switched(self, model_name: str):
+        if self.state in ("recording", "transcribing", "formatting"):
+            return
+
+        self._set_state("info")
         self.indicator.set_state("info")
 
         self.label.setText(f"Active Model: {model_name}")
-        self.label.setStyleSheet("color: #c084fc; font-weight: 600; font-size: 13px;")
+        self._set_label_theme_styles(
+            "color: #c084fc; font-weight: 600; font-size: 13px;",
+            "color: #7541a3; font-weight: 600; font-size: 13px;"
+        )
 
         self.badge.set_badge(
             "Ready",
@@ -581,35 +726,56 @@ class FloatingPillHUD(QWidget):
             border=QColor(192, 132, 252, 50)
         )
         self._adapt_capsule_size()
+        self._ensure_visible()
         self.update()
-        QTimer.singleShot(1400, self.smooth_hide)
+        self._hide_timer.start(1400)
 
     def _ensure_visible(self):
-        if not self.isVisible():
-            self._apply_no_activate()
-            self.setWindowOpacity(0.0)
-            self.show()
-            self.fade_animation = QPropertyAnimation(self, b"windowOpacity")
-            self.fade_animation.setDuration(160)
-            self.fade_animation.setStartValue(0.0)
-            self.fade_animation.setEndValue(1.0)
-            self.fade_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-            self.fade_animation.start()
+        if self.isVisible():
+            self._stop_fade_animation()
+            self.setWindowOpacity(1.0)
+            return
+
+        self._apply_no_activate()
+        self.setWindowOpacity(0.0)
+        self.show()
+        self.fade_animation = QPropertyAnimation(self, b"windowOpacity")
+        self.fade_animation.setDuration(160)
+        self.fade_animation.setStartValue(0.0)
+        self.fade_animation.setEndValue(1.0)
+        self.fade_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.fade_animation.start()
 
     def smooth_hide(self):
-        if self.isVisible() and self.state in ("done", "info", "no_speech"):
-            self.fade_animation = QPropertyAnimation(self, b"windowOpacity")
-            self.fade_animation.setDuration(220)
-            self.fade_animation.setStartValue(self.windowOpacity())
-            self.fade_animation.setEndValue(0.0)
-            self.fade_animation.setEasingCurve(QEasingCurve.Type.InCubic)
-            self.fade_animation.finished.connect(self._finish_hide)
-            self.fade_animation.start()
+        if not self.isVisible() or self.state not in ("done", "info", "no_speech"):
+            return
 
+        generation = self._state_generation
+        self._stop_fade_animation()
+        self.fade_animation = QPropertyAnimation(self, b"windowOpacity")
+        self.fade_animation.setDuration(220)
+        self.fade_animation.setStartValue(self.windowOpacity())
+        self.fade_animation.setEndValue(0.0)
+        self.fade_animation.setEasingCurve(QEasingCurve.Type.InCubic)
+        self.fade_animation.finished.connect(
+            lambda: self._finish_hide(generation)
+        )
+        self.fade_animation.start()
+
+    @pyqtSlot()
     def immediate_hide(self):
-        self.state = "idle"
+        self._set_state("idle")
+        self._reset_idle_display()
+        self.setWindowOpacity(1.0)
         self.hide()
 
-    def _finish_hide(self):
-        self.state = "idle"
+    def _finish_hide(self, generation: int):
+        if (
+            generation != self._state_generation
+            or self.state not in ("done", "info", "no_speech")
+        ):
+            return
+        self._set_state("idle")
+        self._reset_idle_display()
+        self.setWindowOpacity(1.0)
         self.hide()

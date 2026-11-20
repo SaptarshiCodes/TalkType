@@ -2,6 +2,7 @@ import os
 import logging
 import numpy as np
 from faster_whisper import WhisperModel
+from faster_whisper.vad import VadOptions, get_speech_timestamps
 import threading
 from talktype.models.catalog import MODELS_DIR
 
@@ -97,16 +98,34 @@ class WhisperTranscriber:
             lang = None if language in (None, "auto", "") else language
 
             try:
+                speech_timestamps = get_speech_timestamps(
+                    audio_data,
+                    vad_options=VadOptions(
+                        min_speech_duration_ms=250,
+                        min_silence_duration_ms=400,
+                        speech_pad_ms=250,
+                    ),
+                    sampling_rate=16000,
+                )
+                if not speech_timestamps:
+                    logger.info("Voice activity detection found no speech.")
+                    return "", "unknown"
+
+                # faster-whisper expects clip_timestamps as a flat list of floats:
+                # [start1_sec, end1_sec, start2_sec, end2_sec, ...]
+                # NOT a list of dicts — that causes TypeError inside generate_segments.
+                clip_timestamps = []
+                for chunk in speech_timestamps:
+                    clip_timestamps.append(chunk["start"] / 16000.0)
+                    clip_timestamps.append(chunk["end"] / 16000.0)
+
                 segments, info = self.model.transcribe(
                     audio_data,
                     beam_size=5,
                     language=lang,
                     initial_prompt=initial_prompt,
-                    vad_filter=True,
-                    vad_parameters=dict(
-                        min_silence_duration_ms=400,
-                        speech_pad_ms=250
-                    )
+                    vad_filter=False,
+                    clip_timestamps=clip_timestamps,
                 )
 
                 text_parts = [segment.text.strip() for segment in segments]

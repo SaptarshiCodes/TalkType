@@ -25,6 +25,7 @@ DEFAULT_CONFIG = {
     "paste_mode": "clipboard",
     "restore_clipboard": True,
     "sound_feedback": True,
+    "theme": "light",
     "show_overlay": True,
     "sample_rate": 16000
 }

@@ -11,22 +11,21 @@ class TextInjector:
         self.restore_clipboard = restore_clipboard
         self.keyboard = Controller()
 
-    def inject(self, text: str):
+    def inject(self, text: str) -> bool:
         """Injects text into the active focused window."""
         if not text:
-            return
+            return False
 
         # Ensure clean text formatting
         text_to_insert = text.strip()
         if not text_to_insert:
-            return
+            return False
 
         if self.mode == "clipboard":
-            self._paste_text(text_to_insert)
-        else:
-            self._type_text(text_to_insert)
+            return self._paste_text(text_to_insert)
+        return self._type_text(text_to_insert)
 
-    def _paste_text(self, text: str):
+    def _paste_text(self, text: str) -> bool:
         """Copies text to clipboard, simulates Ctrl+V, and restores previous clipboard."""
         previous_clipboard = None
         if self.restore_clipboard:
@@ -59,15 +58,18 @@ class TextInjector:
                 except Exception as e:
                     logger.debug(f"Could not restore previous clipboard: {e}")
 
+            return True
         except Exception as e:
             logger.error(f"Error pasting text: {e}")
             # Fallback to direct typing
-            self._type_text(text)
+            return self._type_text(text)
 
-    def _type_text(self, text: str):
+    def _type_text(self, text: str) -> bool:
         """Simulates typing character by character."""
         try:
             self.keyboard.type(text)
             logger.info(f"Typed text: {text[:40]}...")
+            return True
         except Exception as e:
             logger.error(f"Error typing text: {e}")
+            return False

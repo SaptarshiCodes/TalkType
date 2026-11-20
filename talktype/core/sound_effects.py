@@ -18,6 +18,7 @@ class SoundEffects:
         self._start_wave = self._generate_chime([587.33, 880.00], duration=0.18, decay=10.0, volume=0.22)
         self._stop_wave = self._generate_chime([880.00, 587.33], duration=0.16, decay=12.0, volume=0.20)
         self._success_wave = self._generate_chime([659.25, 880.00, 1174.66], duration=0.26, decay=8.0, volume=0.22)
+        self._cancel_wave = self._generate_chime([440.00, 329.63], duration=0.14, decay=14.0, volume=0.16)
 
     def _generate_chime(self, freqs: list[float], duration: float, decay: float, volume: float) -> np.ndarray:
         """Synthesizes smooth harmonic chord with exponential decay envelope."""
@@ -59,3 +60,8 @@ class SoundEffects:
         """Pristine 3-tone harmonic confirmation when text is formatted & pasted."""
         if self.enabled:
             threading.Thread(target=self._play, args=(self._success_wave,), daemon=True).start()
+
+    def play_cancel(self):
+        """Muted 2-tone descending tone for no-speech or error feedback."""
+        if self.enabled:
+            threading.Thread(target=self._play, args=(self._cancel_wave,), daemon=True).start()

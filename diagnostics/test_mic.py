@@ -1,26 +1,30 @@
-"""
+r"""
 Quick diagnostics script to test microphone input, volume level, and speech recognition.
-Run with: .\venv\Scripts\python.exe test_mic.py
+Run from the project root with: .\venv\Scripts\python.exe diagnostics\test_mic.py
 """
 
+import os
+import sys
 import time
 import numpy as np
 import sounddevice as sd
-from transcriber import WhisperTranscriber
-from text_formatter import TextFormatter
-import json
-import os
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from talktype.config import load_config
+from talktype.core import TextFormatter, WhisperTranscriber
 
 print("=" * 60)
 print("      TalkType - Microphone & Transcription Diagnostic")
 print("=" * 60)
 
-# 1. Load config
-config_path = os.path.join(os.path.dirname(__file__), "config.json")
-config = {}
-if os.path.exists(config_path):
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = json.load(f)
+# 1. Load project config
+config = load_config()
 
 model_size = config.get("model_size", "small")
 lang = config.get("language", "auto")

@@ -109,16 +109,16 @@ TalkType supports 14 models that can be switched on the fly via the Windows Syst
 
 | Language | Model Key | Variant | Speed | RAM | Best For |
 | :--- | :--- | :--- | :--- | :--- | :--- |
+| **English Only** | `tiny.en` | Tiny | ⚡⚡⚡⚡ Instant (~60ms) | ~200 MB | Fast English notes & messaging |
+| | `base.en` | Base | ⚡⚡⚡ Very Fast (~140ms) | ~350 MB | Everyday English dictation |
+| | `small.en` | Small | ⚡⚡ Fast (~300ms) | ~1.0 GB | Coding & technical documentation |
+| | `medium.en` | Medium | ⚡ Studio (~650ms) | ~2.5 GB | Studio-grade English precision |
 | **Bengali (বাংলা)** | `bengali.tiny` | **Tiny** | ⚡⚡⚡⚡ Instant (~80ms) | ~250 MB | Ultra-light dialect dictation |
 | | `bengali` | **Small** | ⚡⚡⚡ Fast (~300ms) | ~600 MB | Accurate Bengali vocabulary & regional speech |
 | | `bengali.medium` | **Medium** | ⚡ Studio (~800ms) | ~2.5 GB | Benchmark winner for complex Bengali audio |
 | **Hindi (हिन्दी)** | `hindi.tiny` | **Tiny** | ⚡⚡⚡⚡ Instant (~80ms) | ~250 MB | Ultra-fast Hindi voice typing |
 | | `hindi` | **Small** | ⚡⚡ Fast (~350ms) | ~1.0 GB | Conversational Hindi & Devanagari script |
 | | `hindi.medium` | **Medium** | ⚡ Studio (~800ms) | ~2.5 GB | Maximum precision Devanagari recognition |
-| **English Only** | `tiny.en` | Tiny | ⚡⚡⚡⚡ Instant (~60ms) | ~200 MB | Fast English notes & messaging |
-| | `base.en` | Base | ⚡⚡⚡ Very Fast (~140ms) | ~350 MB | Everyday English dictation |
-| | `small.en` | Small | ⚡⚡ Fast (~300ms) | ~1.0 GB | Coding & technical documentation |
-| | `medium.en` | Medium | ⚡ Studio (~650ms) | ~2.5 GB | Studio-grade English precision |
 | **Multilingual** | `tiny` | Tiny | ⚡⚡⚡⚡ Instant (~80ms) | ~250 MB | 99 languages lightweight |
 | | `base` | Base | ⚡⚡⚡ Very Fast (~180ms) | ~400 MB | 99 languages balanced |
 | | `small` | Small | ⚡⚡ Fast (~350ms) | ~1.0 GB | **Recommended** balanced general model |
